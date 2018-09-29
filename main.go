@@ -42,6 +42,7 @@ func main() {
 	ln, err := net.Listen("tcp", ":8080")
 	fmt.Printf("Listening on :8080\n")
 	if err != nil {
+		fmt.Printf("Failed to listen: %s\n", err)
 		os.Exit(1)
 	}
 
@@ -52,30 +53,32 @@ func main() {
 			continue
 		}
 
-		client, err := tls.Dial("tcp", "secret.theknown.net:443", config)
-		if err != nil {
-			fmt.Printf("Failed to connect: %s\n", err)
-			os.Exit(1)
-		}
-
-		upstream := chanFromConn(client)
-		local := chanFromConn(c)
-
-		go func() {
-			for {
-				select {
-				case b1 := <-upstream:
-					if b1 == nil {
-						return
-					}
-					c.Write(b1)
-				case b2 := <-local:
-					if b2 == nil {
-						return
-					}
-					client.Write(b2)
-				}
+		go func(c net.Conn) {
+			client, err := tls.Dial("tcp", "secret.theknown.net:443", config)
+			if err != nil {
+				fmt.Printf("Failed to connect: %s\n", err)
+				return
 			}
-		}()
+
+			upstream := chanFromConn(client)
+			local := chanFromConn(c)
+
+			go func() {
+				for {
+					select {
+					case b1 := <-upstream:
+						if b1 == nil {
+							return
+						}
+						c.Write(b1)
+					case b2 := <-local:
+						if b2 == nil {
+							return
+						}
+						client.Write(b2)
+					}
+				}
+			}()
+		}(c)
 	}
 }
